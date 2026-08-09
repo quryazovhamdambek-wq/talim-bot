@@ -16,6 +16,7 @@ class Base(DeclarativeBase):
     pass
 
 class User(Base):
+    language: Mapped[str] = mapped_column(String(10), default="uz")
     __tablename__ = "users"
     
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

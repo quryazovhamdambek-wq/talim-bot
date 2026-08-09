@@ -18,15 +18,15 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 dp.include_router(router)
 
-async def on_shutdown(app):
-    pass
+async def on_startup(app):
+    await init_db()
+    if RENDER_URL:
         webhook_url = f"{RENDER_URL}/webhook/{TOKEN}"
         await bot.set_webhook(webhook_url)
         logging.info(f"Webhook o'rnatildi: {webhook_url}")
 
 async def on_shutdown(app):
-    if RENDER_URL:
-        await bot.delete_webhook()
+    pass
 
 def main():
     logging.basicConfig(level=logging.INFO)
@@ -51,4 +51,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-  

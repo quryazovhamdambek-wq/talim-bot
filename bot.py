@@ -18,9 +18,8 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 dp.include_router(router)
 
-async def on_startup(app):
-    await init_db()
-    if RENDER_URL:
+async def on_shutdown(app):
+    pass
         webhook_url = f"{RENDER_URL}/webhook/{TOKEN}"
         await bot.set_webhook(webhook_url)
         logging.info(f"Webhook o'rnatildi: {webhook_url}")

@@ -3,7 +3,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from database import async_session, User, Vacancy, Resume
 
@@ -78,7 +78,7 @@ async def get_or_create_user(user_id: int, full_name: str):
 async def notify_admins(text: str, keyboard: InlineKeyboardMarkup, bot):
     for admin_id in ADMIN_IDS:
         try:
-            await bot.send_message(admin_id, text, reply_markup=keyboard)
+            await bot.send_message(admin_id, text, reply_markup=keyboard, parse_mode="HTML")
         except Exception:
             pass
 
@@ -89,9 +89,31 @@ async def notify_admins(text: str, keyboard: InlineKeyboardMarkup, bot):
 async def start_handler(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "Assalomu alaykum! Ta'lim yo'nalishidagi vakansiya va rezyume botiga xush kelibsiz.",
-        reply_markup=get_main_keyboard()
+        "👋 <b>Assalomu alaykum!</b>\n\n"
+        "Bu — ta'lim sohasidagi ish va rezyume platformasi. Bu yerda siz:\n\n"
+        "🏢 Vakansiya joylashingiz\n"
+        "📝 Rezyume yaratishingiz\n"
+        "🔍 Ochiq vakansiyalarni ko'rishingiz mumkin\n\n"
+        "Boshlash uchun pastdagi tugmalardan birini tanlang 👇",
+        reply_markup=get_main_keyboard(),
+        parse_mode="HTML"
     )
+
+
+# ---------- /help ----------
+
+@router.message(F.text == "/help")
+async def help_handler(message: Message):
+    text = (
+        "ℹ️ <b>Bot haqida qo'llanma</b>\n\n"
+        "🏢 <b>Vakansiya joylash</b> — ish beruvchilar uchun, bo'sh o'rin e'lon qilish\n"
+        "📝 <b>Rezyume joylash</b> — ish izlovchilar uchun, o'zingiz haqingizda ma'lumot qoldirish\n"
+        "🔍 <b>Vakansiyalarni ko'rish</b> — tasdiqlangan barcha bo'sh o'rinlar\n"
+        "📂 <b>Mening e'lonlarim</b> — joylagan e'lonlaringiz holati\n"
+        "👤 <b>Mening ma'lumotlarim</b> — profil ma'lumotlari\n\n"
+        "❗️ Har bir e'lon avval moderatsiyadan o'tadi, keyin e'lon qilinadi."
+    )
+    await message.answer(text, parse_mode="HTML")
 
 
 # ---------- MENING MA'LUMOTLARIM ----------
@@ -101,12 +123,13 @@ async def my_profile_handler(message: Message):
     user = message.from_user
     username = f"@{user.username}" if user.username else "Mavjud emas"
     text = (
-        f"👤 Sizning profilingiz:\n\n"
-        f"🆔 ID: {user.id}\n"
+        f"👤 <b>Sizning profilingiz</b>\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"🆔 ID: <code>{user.id}</code>\n"
         f"✍️ Ism: {user.full_name}\n"
         f"🌐 Username: {username}"
     )
-    await message.answer(text)
+    await message.answer(text, parse_mode="HTML")
 
 
 # ---------- MENING E'LONLARIM ----------
@@ -128,17 +151,17 @@ async def my_listings_handler(message: Message):
 
     for v in vacancies:
         text = (
-            f"🏢 [Vakansiya] {v.title} — {v.company_name}\n"
+            f"🏢 <b>[Vakansiya]</b> {v.title} — {v.company_name}\n"
             f"Holat: {status_emoji.get(v.status, v.status)}"
         )
-        await message.answer(text)
+        await message.answer(text, parse_mode="HTML")
 
     for r in resumes:
         text = (
-            f"📝 [Rezyume] {r.subject} — {r.full_name}\n"
+            f"📝 <b>[Rezyume]</b> {r.subject} — {r.full_name}\n"
             f"Holat: {status_emoji.get(r.status, r.status)}"
         )
-        await message.answer(text)
+        await message.answer(text, parse_mode="HTML")
 
 
 # ---------- VAKANSIYALARNI KO'RISH ----------
@@ -155,16 +178,17 @@ async def show_vacancies_handler(message: Message):
 
     for v in vacancies:
         text = (
-            f"🏢 {v.company_name}\n"
-            f"📌 Lavozim: {v.title}\n"
-            f"📚 Yo'nalish: {v.subject}\n"
-            f"📋 Talablar: {v.requirements}\n"
-            f"💰 Maosh: {v.salary}\n"
-            f"📍 Hudud: {v.region}\n"
-            f"🖥 Format: {v.work_format}\n"
-            f"📞 Aloqa: {v.contact}"
+            f"🏢 <b>{v.company_name}</b>\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"📌 <b>Lavozim:</b> {v.title}\n"
+            f"📚 <b>Yo'nalish:</b> {v.subject}\n"
+            f"📋 <b>Talablar:</b> {v.requirements}\n"
+            f"💰 <b>Maosh:</b> {v.salary}\n"
+            f"📍 <b>Hudud:</b> {v.region}\n"
+            f"🖥 <b>Format:</b> {v.work_format}\n"
+            f"📞 <b>Aloqa:</b> {v.contact}"
         )
-        await message.answer(text)
+        await message.answer(text, parse_mode="HTML")
 
 
 # ---------- VAKANSIYA JOYLASH (FSM) ----------
@@ -244,7 +268,7 @@ async def vacancy_contact(message: Message, state: FSMContext):
     data = await state.get_data()
 
     preview = (
-        "📋 Quyidagi ma'lumotlarni tekshiring:\n\n"
+        "📋 <b>Quyidagi ma'lumotlarni tekshiring:</b>\n\n"
         f"🏢 Tashkilot: {data['company_name']}\n"
         f"📌 Lavozim: {data['title']}\n"
         f"📚 Yo'nalish: {data['subject']}\n"
@@ -255,7 +279,7 @@ async def vacancy_contact(message: Message, state: FSMContext):
         f"📞 Aloqa: {data['contact']}"
     )
     await state.set_state(VacancyState.confirm)
-    await message.answer(preview, reply_markup=get_confirm_keyboard())
+    await message.answer(preview, reply_markup=get_confirm_keyboard(), parse_mode="HTML")
 
 
 @router.message(VacancyState.confirm, F.text == "✅ Tasdiqlash")
@@ -285,7 +309,7 @@ async def vacancy_save(message: Message, state: FSMContext, bot):
     await message.answer("✅ Vakansiyangiz qabul qilindi va moderatsiyaga yuborildi!", reply_markup=get_main_keyboard())
 
     admin_text = (
-        f"🆕 Yangi vakansiya (#{vacancy.id})\n\n"
+        f"🆕 <b>Yangi vakansiya (#{vacancy.id})</b>\n\n"
         f"🏢 {vacancy.company_name}\n"
         f"📌 {vacancy.title}\n"
         f"📚 {vacancy.subject}\n"
@@ -367,7 +391,7 @@ async def resume_region(message: Message, state: FSMContext):
     data = await state.get_data()
 
     preview = (
-        "📋 Quyidagi ma'lumotlarni tekshiring:\n\n"
+        "📋 <b>Quyidagi ma'lumotlarni tekshiring:</b>\n\n"
         f"✍️ Ism: {data['full_name']}\n"
         f"📞 Telefon: {data['phone']}\n"
         f"📚 Yo'nalish: {data['subject']}\n"
@@ -377,7 +401,7 @@ async def resume_region(message: Message, state: FSMContext):
         f"📍 Hudud: {data['region']}"
     )
     await state.set_state(ResumeState.confirm)
-    await message.answer(preview, reply_markup=get_confirm_keyboard())
+    await message.answer(preview, reply_markup=get_confirm_keyboard(), parse_mode="HTML")
 
 
 @router.message(ResumeState.confirm, F.text == "✅ Tasdiqlash")
@@ -406,7 +430,7 @@ async def resume_save(message: Message, state: FSMContext, bot):
     await message.answer("✅ Rezyumeingiz qabul qilindi va moderatsiyaga yuborildi!", reply_markup=get_main_keyboard())
 
     admin_text = (
-        f"🆕 Yangi rezyume (#{resume.id})\n\n"
+        f"🆕 <b>Yangi rezyume (#{resume.id})</b>\n\n"
         f"✍️ {resume.full_name}\n"
         f"📞 {resume.phone}\n"
         f"📚 {resume.subject}\n"
@@ -458,17 +482,18 @@ async def admin_review_callback(callback: CallbackQuery, bot):
 
         if CHANNEL_ID and kind == "vacancy":
             channel_text = (
-                f"🏢 {item.company_name}\n"
-                f"📌 Lavozim: {item.title}\n"
-                f"📚 Yo'nalish: {item.subject}\n"
-                f"📋 Talablar: {item.requirements}\n"
-                f"💰 Maosh: {item.salary}\n"
-                f"📍 Hudud: {item.region}\n"
-                f"🖥 Format: {item.work_format}\n"
-                f"📞 Aloqa: {item.contact}"
+                f"🏢 <b>{item.company_name}</b>\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"📌 <b>Lavozim:</b> {item.title}\n"
+                f"📚 <b>Yo'nalish:</b> {item.subject}\n"
+                f"📋 <b>Talablar:</b> {item.requirements}\n"
+                f"💰 <b>Maosh:</b> {item.salary}\n"
+                f"📍 <b>Hudud:</b> {item.region}\n"
+                f"🖥 <b>Format:</b> {item.work_format}\n"
+                f"📞 <b>Aloqa:</b> {item.contact}"
             )
             try:
-                await bot.send_message(CHANNEL_ID, channel_text)
+                await bot.send_message(CHANNEL_ID, channel_text, parse_mode="HTML")
             except Exception:
                 pass
     else:
@@ -481,10 +506,37 @@ async def admin_review_callback(callback: CallbackQuery, bot):
     await callback.answer()
 
 
+# ---------- ADMIN: STATISTIKA ----------
+
+@router.message(F.text == "/stats")
+async def stats_handler(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    async with async_session() as session:
+        total_vac = await session.scalar(select(func.count()).select_from(Vacancy))
+        pending_vac = await session.scalar(select(func.count()).select_from(Vacancy).where(Vacancy.status == "pending"))
+        approved_vac = await session.scalar(select(func.count()).select_from(Vacancy).where(Vacancy.status == "approved"))
+
+        total_res = await session.scalar(select(func.count()).select_from(Resume))
+        pending_res = await session.scalar(select(func.count()).select_from(Resume).where(Resume.status == "pending"))
+        approved_res = await session.scalar(select(func.count()).select_from(Resume).where(Resume.status == "approved"))
+
+        total_users = await session.scalar(select(func.count()).select_from(User))
+
+    text = (
+        "📊 <b>Statistika</b>\n\n"
+        f"👥 Foydalanuvchilar: {total_users}\n\n"
+        f"🏢 <b>Vakansiyalar:</b> {total_vac}\n"
+        f"   ⏳ Kutilmoqda: {pending_vac}\n"
+        f"   ✅ Tasdiqlangan: {approved_vac}\n\n"
+        f"📝 <b>Rezyumelar:</b> {total_res}\n"
+        f"   ⏳ Kutilmoqda: {pending_res}\n"
+        f"   ✅ Tasdiqlangan: {approved_res}"
+    )
+    await message.answer(text, parse_mode="HTML")
+
+
 # ---------- BEKOR QILISH ----------
 
-@router.message(F.text == "❌ Bekor qilish")
-async def cancel_handler(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Amaliyot bekor qilindi.", reply_markup=get_main_keyboard())
-                                                                
+            

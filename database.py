@@ -39,7 +39,20 @@ class Vacancy(Base):
     contact: Mapped[str] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(String(20), default="pending")
     created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+class Resume(Base):
+    __tablename__ = "resumes"
 
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    candidate_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"))
+    full_name: Mapped[str] = mapped_column(String(100))
+    phone: Mapped[str] = mapped_column(String(20))
+    subject: Mapped[str] = mapped_column(String(100))
+    experience: Mapped[str] = mapped_column(Text)
+    education: Mapped[str] = mapped_column(Text)
+    about: Mapped[str] = mapped_column(Text)
+    region: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

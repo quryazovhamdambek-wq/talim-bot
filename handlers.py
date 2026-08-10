@@ -471,4 +471,398 @@ async def show_vacancies_handler(message: Message):
             f"{t(lang, 'v_requirements')} {v.requirements}\n"
             f"{t(lang, 'v_salary')} {v.salary}\n"
             f"{t(lang, 'v_region')} {v.region}\n"
-           
+           )
+        await message.answer(text, parse_mode="HTML")
+
+# ---------- VAKANSIYA JOYLASH (FSM) ----------
+
+class VacancyState(StatesGroup):
+    company_name = State()
+    title = State()
+    subject = State()
+    requirements = State()
+    salary = State()
+    region = State()
+    work_format = State()
+    contact = State()
+    confirm = State()
+
+
+@router.message(F.text.in_(all_variants("btn_post_vacancy")))
+async def vacancy_start(message: Message, state: FSMContext):
+    lang = await get_user_lang(message.from_user.id)
+    await state.update_data(lang=lang)
+    await state.set_state(VacancyState.company_name)
+    await message.answer(t(lang, "ask_company"), reply_markup=get_cancel_keyboard(lang))
+
+
+@router.message(VacancyState.company_name)
+async def vacancy_company_name(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    await state.update_data(company_name=message.text)
+    await state.set_state(VacancyState.title)
+    await message.answer(t(lang, "ask_position"))
+
+
+@router.message(VacancyState.title)
+async def vacancy_title(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    await state.update_data(title=message.text)
+    await state.set_state(VacancyState.subject)
+    await message.answer(t(lang, "ask_subject"))
+
+
+@router.message(VacancyState.subject)
+async def vacancy_subject(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    await state.update_data(subject=message.text)
+    await state.set_state(VacancyState.requirements)
+    await message.answer(t(lang, "ask_requirements"), reply_markup=get_cancel_skip_keyboard(lang))
+
+
+@router.message(VacancyState.requirements)
+async def vacancy_requirements(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    value = None if message.text == t(lang, "btn_skip") else message.text
+    await state.update_data(requirements=value)
+    await state.set_state(VacancyState.salary)
+    await message.answer(t(lang, "ask_salary"), reply_markup=get_cancel_skip_keyboard(lang))
+
+
+@router.message(VacancyState.salary)
+async def vacancy_salary(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    value = None if message.text == t(lang, "btn_skip") else message.text
+    await state.update_data(salary=value)
+    await state.set_state(VacancyState.region)
+    await message.answer(t(lang, "ask_region"), reply_markup=get_cancel_keyboard(lang))
+
+
+@router.message(VacancyState.region)
+async def vacancy_region(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    await state.update_data(region=message.text)
+    await state.set_state(VacancyState.work_format)
+    await message.answer(t(lang, "ask_format"), reply_markup=get_work_format_keyboard(lang))
+
+
+@router.message(VacancyState.work_format, F.text.in_(all_variants("btn_offline") + all_variants("btn_online")))
+async def vacancy_work_format(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    fmt = "offline" if message.text == t(lang, "btn_offline") else "online"
+    await state.update_data(work_format=fmt)
+    await state.set_state(VacancyState.contact)
+    await message.answer(t(lang, "ask_contact"), reply_markup=get_cancel_keyboard(lang))
+
+
+@router.message(VacancyState.contact)
+async def vacancy_contact(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    await state.update_data(contact=message.text)
+    data = await state.get_data()
+
+    preview = (
+        f"{t(lang, 'vacancy_preview_title')}\n\n"
+        f"🏢 {data['company_name']}\n"
+        f"{t(lang, 'v_position')} {data['title']}\n"
+        f"{t(lang, 'v_subject')} {data['subject']}\n"
+        f"{t(lang, 'v_requirements')} {data.get('requirements') or '—'}\n"
+        f"{t(lang, 'v_salary')} {data.get('salary') or '—'}\n"
+        f"{t(lang, 'v_region')} {data['region']}\n"
+        f"{t(lang, 'v_format')} {data['work_format']}\n"
+        f"{t(lang, 'v_contact')} {data['contact']}"
+    )
+    await state.set_state(VacancyState.confirm)
+    await message.answer(preview, reply_markup=get_confirm_keyboard(lang), parse_mode="HTML")
+
+
+@router.message(VacancyState.confirm, F.text.in_(all_variants("btn_confirm")))
+async def vacancy_save(message: Message, state: FSMContext, bot):
+    data = await state.get_data()
+    lang = data["lang"]
+    user = message.from_user
+    await get_or_create_user(user.id, user.full_name)
+
+    async with async_session() as session:
+        vacancy = Vacancy(
+            employer_id=user.id,
+            company_name=data["company_name"],
+            title=data["title"],
+            subject=data["subject"],
+            requirements=data.get("requirements") or "—",
+            salary=data.get("salary") or "—",
+            region=data["region"],
+            work_format=data["work_format"],
+            contact=data["contact"],
+            status="pending"
+        )
+        session.add(vacancy)
+        await session.commit()
+        await session.refresh(vacancy)
+
+    await state.clear()
+    await message.answer(t(lang, "vacancy_saved"), reply_markup=get_main_keyboard(lang))
+
+    admin_text = (
+        f"🆕 <b>Yangi vakansiya (#{vacancy.id})</b>\n\n"
+        f"🏢 {vacancy.company_name}\n"
+        f"📌 {vacancy.title}\n"
+        f"📚 {vacancy.subject}\n"
+        f"📋 {vacancy.requirements}\n"
+        f"💰 {vacancy.salary}\n"
+        f"📍 {vacancy.region}\n"
+        f"🖥 {vacancy.work_format}\n"
+        f"📞 {vacancy.contact}"
+    )
+    await notify_admins(admin_text, get_admin_review_keyboard("vacancy", vacancy.id), bot)
+
+
+# ---------- REZYUME JOYLASH (FSM) ----------
+
+class ResumeState(StatesGroup):
+    full_name = State()
+    phone = State()
+    subject = State()
+    experience = State()
+    education = State()
+    about = State()
+    region = State()
+    confirm = State()
+
+
+@router.message(F.text.in_(all_variants("btn_post_resume")))
+async def resume_start(message: Message, state: FSMContext):
+    lang = await get_user_lang(message.from_user.id)
+    await state.update_data(lang=lang)
+    await state.set_state(ResumeState.full_name)
+    await message.answer(t(lang, "ask_full_name"), reply_markup=get_cancel_keyboard(lang))
+
+
+@router.message(ResumeState.full_name)
+async def resume_full_name(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    await state.update_data(full_name=message.text)
+    await state.set_state(ResumeState.phone)
+    await message.answer(t(lang, "ask_phone"))
+
+
+@router.message(ResumeState.phone)
+async def resume_phone(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    await state.update_data(phone=message.text)
+    await state.set_state(ResumeState.subject)
+    await message.answer(t(lang, "ask_resume_subject"))
+
+
+@router.message(ResumeState.subject)
+async def resume_subject(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    await state.update_data(subject=message.text)
+    await state.set_state(ResumeState.experience)
+    await message.answer(t(lang, "ask_experience"), reply_markup=get_cancel_skip_keyboard(lang))
+
+
+@router.message(ResumeState.experience)
+async def resume_experience(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    value = None if message.text == t(lang, "btn_skip") else message.text
+    await state.update_data(experience=value)
+    await state.set_state(ResumeState.education)
+    await message.answer(t(lang, "ask_education"), reply_markup=get_cancel_keyboard(lang))
+
+
+@router.message(ResumeState.education)
+async def resume_education(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    await state.update_data(education=message.text)
+    await state.set_state(ResumeState.about)
+    await message.answer(t(lang, "ask_about"), reply_markup=get_cancel_skip_keyboard(lang))
+
+
+@router.message(ResumeState.about)
+async def resume_about(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    value = None if message.text == t(lang, "btn_skip") else message.text
+    await state.update_data(about=value)
+    await state.set_state(ResumeState.region)
+    await message.answer(t(lang, "ask_resume_region"), reply_markup=get_cancel_keyboard(lang))
+
+
+@router.message(ResumeState.region)
+async def resume_region(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data["lang"]
+    await state.update_data(region=message.text)
+    data = await state.get_data()
+
+    preview = (
+        f"{t(lang, 'resume_preview_title')}\n\n"
+        f"{t(lang, 'r_name')} {data['full_name']}\n"
+        f"{t(lang, 'r_phone')} {data['phone']}\n"
+        f"{t(lang, 'v_subject')} {data['subject']}\n"
+        f"{t(lang, 'r_experience')} {data.get('experience') or '—'}\n"
+        f"{t(lang, 'r_education')} {data['education']}\n"
+        f"{t(lang, 'r_about')} {data.get('about') or '—'}\n"
+        f"{t(lang, 'v_region')} {data['region']}"
+    )
+    await state.set_state(ResumeState.confirm)
+    await message.answer(preview, reply_markup=get_confirm_keyboard(lang), parse_mode="HTML")
+
+
+@router.message(ResumeState.confirm, F.text.in_(all_variants("btn_confirm")))
+async def resume_save(message: Message, state: FSMContext, bot):
+    data = await state.get_data()
+    lang = data["lang"]
+    user = message.from_user
+    await get_or_create_user(user.id, user.full_name)
+
+    async with async_session() as session:
+        resume = Resume(
+            candidate_id=user.id,
+            full_name=data["full_name"],
+            phone=data["phone"],
+            subject=data["subject"],
+            experience=data.get("experience") or "—",
+            education=data["education"],
+            about=data.get("about") or "—",
+            region=data["region"],
+            status="pending"
+        )
+        session.add(resume)
+        await session.commit()
+        await session.refresh(resume)
+
+    await state.clear()
+    await message.answer(t(lang, "resume_saved"), reply_markup=get_main_keyboard(lang))
+
+    admin_text = (
+        f"🆕 <b>Yangi rezyume (#{resume.id})</b>\n\n"
+        f"✍️ {resume.full_name}\n"
+        f"📞 {resume.phone}\n"
+        f"📚 {resume.subject}\n"
+        f"💼 {resume.experience}\n"
+        f"🎓 {resume.education}\n"
+        f"ℹ️ {resume.about}\n"
+        f"📍 {resume.region}"
+    )
+    await notify_admins(admin_text, get_admin_review_keyboard("resume", resume.id), bot)
+
+
+# ---------- ADMIN: TASDIQLASH / RAD ETISH ----------
+
+@router.callback_query(F.data.startswith("approve:") | F.data.startswith("reject:"))
+async def admin_review_callback(callback: CallbackQuery, bot):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Sizda ruxsat yo'q.", show_alert=True)
+        return
+
+    action, kind, item_id_str = callback.data.split(":")
+    item_id = int(item_id_str)
+    new_status = "approved" if action == "approve" else "rejected"
+
+    async with async_session() as session:
+        if kind == "vacancy":
+            result = await session.execute(select(Vacancy).where(Vacancy.id == item_id))
+            item = result.scalar_one_or_none()
+        else:
+            result = await session.execute(select(Resume).where(Resume.id == item_id))
+            item = result.scalar_one_or_none()
+
+        if not item:
+            await callback.answer("Topilmadi yoki allaqachon ko'rib chiqilgan.", show_alert=True)
+            return
+
+        item.status = new_status
+        await session.commit()
+
+        recipient_id = item.employer_id if kind == "vacancy" else item.candidate_id
+
+    recipient_lang = await get_user_lang(recipient_id)
+
+    await callback.message.edit_reply_markup(reply_markup=None)
+
+    if new_status == "approved":
+        await callback.message.answer(f"✅ #{item_id} tasdiqlandi.")
+        try:
+            await bot.send_message(recipient_id, t(recipient_lang, "approved_notify"))
+        except Exception:
+            pass
+
+        if CHANNEL_ID and kind == "vacancy":
+            channel_text = (
+                f"🏢 <b>{item.company_name}</b>\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"📌 <b>Lavozim:</b> {item.title}\n"
+                f"📚 <b>Yo'nalish:</b> {item.subject}\n"
+                f"📋 <b>Talablar:</b> {item.requirements}\n"
+                f"💰 <b>Maosh:</b> {item.salary}\n"
+                f"📍 <b>Hudud:</b> {item.region}\n"
+                f"🖥 <b>Format:</b> {item.work_format}\n"
+                f"📞 <b>Aloqa:</b> {item.contact}"
+            )
+            try:
+                await bot.send_message(CHANNEL_ID, channel_text, parse_mode="HTML")
+            except Exception:
+                pass
+    else:
+        await callback.message.answer(f"❌ #{item_id} rad etildi.")
+        try:
+            await bot.send_message(recipient_id, t(recipient_lang, "rejected_notify"))
+        except Exception:
+            pass
+
+    await callback.answer()
+
+
+# ---------- ADMIN: STATISTIKA ----------
+
+@router.message(F.text == "/stats")
+async def stats_handler(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    async with async_session() as session:
+        total_vac = await session.scalar(select(func.count()).select_from(Vacancy))
+        pending_vac = await session.scalar(select(func.count()).select_from(Vacancy).where(Vacancy.status == "pending"))
+        approved_vac = await session.scalar(select(func.count()).select_from(Vacancy).where(Vacancy.status == "approved"))
+
+        total_res = await session.scalar(select(func.count()).select_from(Resume))
+        pending_res = await session.scalar(select(func.count()).select_from(Resume).where(Resume.status == "pending"))
+        approved_res = await session.scalar(select(func.count()).select_from(Resume).where(Resume.status == "approved"))
+
+        total_users = await session.scalar(select(func.count()).select_from(User))
+
+    text = (
+        "📊 <b>Statistika</b>\n\n"
+        f"👥 Foydalanuvchilar: {total_users}\n\n"
+        f"🏢 <b>Vakansiyalar:</b> {total_vac}\n"
+        f"   ⏳ Kutilmoqda: {pending_vac}\n"
+        f"   ✅ Tasdiqlangan: {approved_vac}\n\n"
+        f"📝 <b>Rezyumelar:</b> {total_res}\n"
+        f"   ⏳ Kutilmoqda: {pending_res}\n"
+        f"   ✅ Tasdiqlangan: {approved_res}"
+    )
+    await message.answer(text, parse_mode="HTML")
+
+
+# ---------- BEKOR QILISH ----------
+
+@router.message(F.text.in_(all_variants("btn_cancel")))
+async def cancel_handler(message: Message, state: FSMContext):
+    lang = await get_user_lang(message.from_user.id)
+    await state.clear()
+    await message.answer(t(lang, "cancelled"), reply_markup=get_main_keyboard(lang))

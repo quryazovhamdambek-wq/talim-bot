@@ -38,7 +38,9 @@ def main():
 
         handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
         handler.register(app, path=f"/webhook/{TOKEN}")
-
+       async def health_check(request):
+            return web.Response(text="OK")
+        app.router.add_get("/", health_check)
         setup_application(app, dp, bot=bot)
         web.run_app(app, host="0.0.0.0", port=PORT)
     else:

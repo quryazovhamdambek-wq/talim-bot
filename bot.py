@@ -14,7 +14,7 @@ from branding import router as branding_router, setup_commands
 from education import router as education_router
 
 TOKEN = os.getenv("BOT_TOKEN")
-RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
+RENDER_URL = (os.getenv("RENDER_EXTERNAL_URL") or "").rstrip("/")
 PORT = int(os.getenv("PORT", 8080))
 
 if not TOKEN:
@@ -29,13 +29,25 @@ dp.include_router(education_router)
 async def on_startup(app):
     await init_db()
     await setup_commands(bot)
+
     if RENDER_URL:
         webhook_url = f"{RENDER_URL}/webhook/{TOKEN}"
-        await bot.set_webhook(webhook_url)
-        logging.info("Webhook o'rnatildi")
+        await bot.set_webhook(
+            webhook_url,
+            drop_pending_updates=False,
+            allowed_updates=dp.resolve_used_update_types(),
+        )
+        info = await bot.get_webhook_info()
+        logging.info(
+            "Telegram webhook ready: url=%s pending=%s last_error=%s",
+            info.url,
+            info.pending_update_count,
+            info.last_error_message,
+        )
 
 async def on_shutdown(app):
-    await bot.delete_webhook(drop_pending_updates=False)
+    # Keep the webhook registered across normal Render restarts/deploys.
+    # Telegram will continue retrying delivery while the service comes back up.
     await bot.session.close()
 
 def main():
@@ -46,8 +58,10 @@ def main():
         app.on_shutdown.append(on_shutdown)
         handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
         handler.register(app, path=f"/webhook/{TOKEN}")
+
         async def health_check(request):
             return web.Response(text="OK")
+
         app.router.add_get("/", health_check)
         setup_application(app, dp, bot=bot)
         web.run_app(app, host="0.0.0.0", port=PORT)

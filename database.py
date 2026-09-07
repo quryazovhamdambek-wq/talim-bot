@@ -2,6 +2,7 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import BigInteger, String, Text, DateTime, ForeignKey, Integer, func
+from sqlalchemy.pool import NullPool
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///bot.db")
 if DATABASE_URL.startswith("postgres://"):
@@ -9,16 +10,14 @@ if DATABASE_URL.startswith("postgres://"):
 elif DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-# Keep database connections healthy on Render/PostgreSQL and recover from
-# connections that were closed while idle. SQLite keeps its normal behavior.
+# Render/PostgreSQL: do not reuse idle connections that may have been closed
+# by the database/provider. A fresh connection is opened for each session.
 if DATABASE_URL.startswith("postgresql+asyncpg://"):
     engine = create_async_engine(
         DATABASE_URL,
         echo=False,
-        pool_pre_ping=True,
-        pool_recycle=300,
-        pool_size=5,
-        max_overflow=5,
+        poolclass=NullPool,
+        connect_args={"command_timeout": 30},
     )
 else:
     engine = create_async_engine(DATABASE_URL, echo=False)

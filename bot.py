@@ -11,6 +11,7 @@ load_dotenv()
 from database import init_db
 from handlers import router
 from branding import router as branding_router, setup_commands
+from education import router as education_router
 
 TOKEN = os.getenv("BOT_TOKEN")
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
@@ -23,6 +24,7 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 dp.include_router(router)
 dp.include_router(branding_router)
+dp.include_router(education_router)
 
 async def on_startup(app):
     await init_db()
@@ -38,18 +40,14 @@ async def on_shutdown(app):
 
 def main():
     logging.basicConfig(level=logging.INFO)
-
     if RENDER_URL:
         app = web.Application()
         app.on_startup.append(on_startup)
         app.on_shutdown.append(on_shutdown)
-
         handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
         handler.register(app, path=f"/webhook/{TOKEN}")
-
         async def health_check(request):
             return web.Response(text="OK")
-
         app.router.add_get("/", health_check)
         setup_application(app, dp, bot=bot)
         web.run_app(app, host="0.0.0.0", port=PORT)
@@ -62,7 +60,6 @@ def main():
                 await dp.start_polling(bot)
             finally:
                 await bot.session.close()
-
         asyncio.run(run_polling())
 
 if __name__ == "__main__":

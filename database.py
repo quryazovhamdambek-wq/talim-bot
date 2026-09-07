@@ -6,8 +6,23 @@ from sqlalchemy import BigInteger, String, Text, DateTime, ForeignKey, Integer, 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///bot.db")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+# Keep database connections healthy on Render/PostgreSQL and recover from
+# connections that were closed while idle. SQLite keeps its normal behavior.
+if DATABASE_URL.startswith("postgresql+asyncpg://"):
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=False,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=5,
+        max_overflow=5,
+    )
+else:
+    engine = create_async_engine(DATABASE_URL, echo=False)
+
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 class Base(DeclarativeBase):

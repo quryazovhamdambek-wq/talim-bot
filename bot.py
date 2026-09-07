@@ -39,15 +39,14 @@ async def on_startup(app):
         )
         info = await bot.get_webhook_info()
         logging.info(
-            "Telegram webhook ready: url=%s pending=%s last_error=%s",
-            info.url,
+            "Telegram webhook ready: pending=%s last_error=%s",
             info.pending_update_count,
             info.last_error_message,
         )
 
 async def on_shutdown(app):
-    # Keep the webhook registered across normal Render restarts/deploys.
-    # Telegram will continue retrying delivery while the service comes back up.
+    # The request handler waits for each update to finish before returning.
+    # Closing the session here is safe after application shutdown.
     await bot.session.close()
 
 def main():
@@ -56,7 +55,11 @@ def main():
         app = web.Application()
         app.on_startup.append(on_startup)
         app.on_shutdown.append(on_shutdown)
-        handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+        handler = SimpleRequestHandler(
+            dispatcher=dp,
+            bot=bot,
+            handle_in_background=False,
+        )
         handler.register(app, path=f"/webhook/{TOKEN}")
 
         async def health_check(request):

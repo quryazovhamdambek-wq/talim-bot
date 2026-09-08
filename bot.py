@@ -10,6 +10,7 @@ load_dotenv()
 
 from database import init_db
 from handlers import router
+import menu_fix
 from branding import router as branding_router, setup_commands
 from education import router as education_router
 
@@ -45,8 +46,6 @@ async def on_startup(app):
         )
 
 async def on_shutdown(app):
-    # The request handler waits for each update to finish before returning.
-    # Closing the session here is safe after application shutdown.
     await bot.session.close()
 
 def main():
